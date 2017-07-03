@@ -25,6 +25,8 @@ import link.fls.swipestack.util.AnimationUtils;
 
 public class SwipeHelper implements View.OnTouchListener {
 
+    public static float mClickThreshold = .4f;
+
     private final SwipeStack mSwipeStack;
     private View mObservedView;
 
@@ -33,11 +35,16 @@ public class SwipeHelper implements View.OnTouchListener {
     private float mDownY;
     private float mInitialX;
     private float mInitialY;
+    private float maxDX = 0;
+    private float maxDY = 0;
     private int mPointerId;
+
 
     private float mRotateDegrees = SwipeStack.DEFAULT_SWIPE_ROTATION;
     private float mOpacityEnd = SwipeStack.DEFAULT_SWIPE_OPACITY;
     private int mAnimationDuration = SwipeStack.DEFAULT_ANIMATION_DURATION;
+
+    private boolean isMoving = false;
 
     public SwipeHelper(SwipeStack swipeStack) {
         mSwipeStack = swipeStack;
@@ -46,9 +53,15 @@ public class SwipeHelper implements View.OnTouchListener {
     @Override
     public boolean onTouch(View v, MotionEvent event) {
 
+        int pointerIndex;
+        float dx, dy;
+
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                if(!mListenForTouchEvents || !mSwipeStack.isEnabled()) {
+                isMoving = false;
+                maxDX = maxDY = 0;
+
+                if (!mListenForTouchEvents || !mSwipeStack.isEnabled()) {
                     return false;
                 }
 
@@ -61,11 +74,17 @@ public class SwipeHelper implements View.OnTouchListener {
                 return true;
 
             case MotionEvent.ACTION_MOVE:
-                int pointerIndex = event.findPointerIndex(mPointerId);
+                isMoving = true;
+
+                if (!mListenForTouchEvents || !mSwipeStack.isEnabled()) {
+                    return false;
+                }
+
+                pointerIndex = event.findPointerIndex(mPointerId);
                 if (pointerIndex < 0) return false;
 
-                float dx = event.getX(pointerIndex) - mDownX;
-                float dy = event.getY(pointerIndex) - mDownY;
+                dx = event.getX(pointerIndex) - mDownX;
+                dy = event.getY(pointerIndex) - mDownY;
 
                 float newX = mObservedView.getX() + dx;
                 float newY = mObservedView.getY() + dy;
@@ -77,7 +96,13 @@ public class SwipeHelper implements View.OnTouchListener {
                 float swipeProgress = Math.min(Math.max(
                         dragDistanceX / mSwipeStack.getWidth(), -1), 1);
 
-                mSwipeStack.onSwipeProgress(swipeProgress);
+                maxDX = Math.max(maxDX, Math.abs(dx));
+                maxDY = Math.max(maxDY, Math.abs(dy));
+
+
+                if (Math.abs(dx) > mClickThreshold && Math.abs(dy) > mClickThreshold) {
+                    mSwipeStack.onSwipeProgress(swipeProgress);
+                }
 
                 if (mRotateDegrees > 0) {
                     float rotation = mRotateDegrees * swipeProgress;
@@ -92,8 +117,10 @@ public class SwipeHelper implements View.OnTouchListener {
                 return true;
 
             case MotionEvent.ACTION_UP:
+                if (!isMoving || (maxDX < mClickThreshold && maxDY < mClickThreshold)) {
+                    mObservedView.performClick();
+                }
                 v.getParent().requestDisallowInterceptTouchEvent(false);
-                mSwipeStack.onSwipeEnd();
                 checkViewPosition();
 
                 return true;
@@ -104,7 +131,7 @@ public class SwipeHelper implements View.OnTouchListener {
     }
 
     private void checkViewPosition() {
-        if(!mSwipeStack.isEnabled()) {
+        if (!mSwipeStack.isEnabled()) {
             resetViewPosition();
             return;
         }
@@ -120,6 +147,7 @@ public class SwipeHelper implements View.OnTouchListener {
                 mSwipeStack.getAllowedSwipeDirections() != SwipeStack.SWIPE_DIRECTION_ONLY_LEFT) {
             swipeViewToRight(mAnimationDuration / 2);
         } else {
+            mSwipeStack.onSwipeEnd();
             resetViewPosition();
         }
     }

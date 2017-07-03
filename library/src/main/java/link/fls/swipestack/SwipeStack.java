@@ -23,10 +23,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.support.annotation.Nullable;
+import android.support.v4.app.FragmentPagerAdapter;
 import android.util.AttributeSet;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Adapter;
 import android.widget.FrameLayout;
 
 import java.util.Random;
@@ -39,7 +40,7 @@ public class SwipeStack extends ViewGroup {
 
     public static final int DEFAULT_ANIMATION_DURATION = 300;
     public static final int DEFAULT_STACK_SIZE = 3;
-    public static final int DEFAULT_STACK_ROTATION = 8;
+    public static final int DEFAULT_STACK_ROTATION = 0;
     public static final float DEFAULT_SWIPE_ROTATION = 30f;
     public static final float DEFAULT_SWIPE_OPACITY = 1f;
     public static final float DEFAULT_SCALE_FACTOR = 1f;
@@ -48,12 +49,13 @@ public class SwipeStack extends ViewGroup {
     private static final String KEY_SUPER_STATE = "superState";
     private static final String KEY_CURRENT_INDEX = "currentIndex";
 
-    private Adapter mAdapter;
+    private LayoutInflater layoutInflater;
+    private FragmentPagerAdapter mAdapter;
     private Random mRandom;
-
     private int mAllowedSwipeDirections;
     private int mAnimationDuration;
     private int mCurrentViewIndex;
+    private int mDefaultNumberOfStackedViews;
     private int mNumberOfStackedViews;
     private int mViewSpacing;
     private int mViewRotation;
@@ -62,11 +64,13 @@ public class SwipeStack extends ViewGroup {
     private float mScaleFactor;
     private boolean mDisableHwAcceleration;
     private boolean mIsFirstLayout = true;
+    private boolean zeroIndexViewNotified = false;
 
     private View mTopView;
     private SwipeHelper mSwipeHelper;
     private DataSetObserver mDataObserver;
     private SwipeStackListener mListener;
+    private SwipeStackIndexListener mIndexListener;
     private SwipeProgressListener mProgressListener;
 
     public SwipeStack(Context context) {
@@ -93,6 +97,8 @@ public class SwipeStack extends ViewGroup {
             mAnimationDuration =
                     attrs.getInt(R.styleable.SwipeStack_animation_duration,
                             DEFAULT_ANIMATION_DURATION);
+            mDefaultNumberOfStackedViews =
+                    attrs.getInt(R.styleable.SwipeStack_stack_size, DEFAULT_STACK_SIZE);
             mNumberOfStackedViews =
                     attrs.getInt(R.styleable.SwipeStack_stack_size, DEFAULT_STACK_SIZE);
             mViewSpacing =
@@ -157,26 +163,29 @@ public class SwipeStack extends ViewGroup {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
 
-        if (mAdapter == null || mAdapter.isEmpty()) {
+        if (mAdapter == null || mAdapter.getCount() == 0) {
             mCurrentViewIndex = 0;
             removeAllViewsInLayout();
             return;
         }
+        boolean reorder = false;
 
-        for (int x = getChildCount();
-             x < mNumberOfStackedViews && mCurrentViewIndex < mAdapter.getCount();
+        for (int x = getChildCount(); x < mNumberOfStackedViews && mCurrentViewIndex < mAdapter.getCount();
              x++) {
             addNextView();
+            reorder = true;
         }
 
-        reorderItems();
+        if (reorder) {
+            reorderItems();
+        }
 
         mIsFirstLayout = false;
     }
 
     private void addNextView() {
         if (mCurrentViewIndex < mAdapter.getCount()) {
-            View bottomView = mAdapter.getView(mCurrentViewIndex, null, this);
+            View bottomView = mAdapter.getItem(mCurrentViewIndex).onCreateView(layoutInflater, null, null);
             bottomView.setTag(R.id.new_view, true);
 
             if (!mDisableHwAcceleration) {
@@ -187,9 +196,6 @@ public class SwipeStack extends ViewGroup {
                 bottomView.setRotation(mRandom.nextInt(mViewRotation) - (mViewRotation / 2));
             }
 
-            int width = getWidth() - (getPaddingLeft() + getPaddingRight());
-            int height = getHeight() - (getPaddingTop() + getPaddingBottom());
-
             LayoutParams params = bottomView.getLayoutParams();
             if (params == null) {
                 params = new LayoutParams(
@@ -197,30 +203,40 @@ public class SwipeStack extends ViewGroup {
                         FrameLayout.LayoutParams.WRAP_CONTENT);
             }
 
-            int measureSpecWidth = MeasureSpec.AT_MOST;
-            int measureSpecHeight = MeasureSpec.AT_MOST;
-
-            if (params.width == LayoutParams.MATCH_PARENT) {
-                measureSpecWidth = MeasureSpec.EXACTLY;
-            }
-
-            if (params.height == LayoutParams.MATCH_PARENT) {
-                measureSpecHeight = MeasureSpec.EXACTLY;
-            }
-
-            bottomView.measure(measureSpecWidth | width, measureSpecHeight | height);
             addViewInLayout(bottomView, 0, params, true);
 
-            mCurrentViewIndex++;
+            ++mCurrentViewIndex;
+            mCurrentViewIndex %= mAdapter.getCount();
         }
+    }
+
+    private void setDimensions(View view, float weight) {
+        int width = getWidth() - (getPaddingRight() + getPaddingLeft());
+        int height = getHeight() - (getPaddingTop() + getPaddingBottom());
+
+        int measureSpecWidth = MeasureSpec.EXACTLY;
+        int measureSpecHeight = MeasureSpec.AT_MOST;
+
+        Double widthD = Math.ceil(width * weight);
+        view.measure(measureSpecWidth | widthD.intValue(), measureSpecHeight | height);
     }
 
     private void reorderItems() {
         for (int x = 0; x < getChildCount(); x++) {
             View childView = getChildAt(x);
             int topViewIndex = getChildCount() - 1;
+            float alpha = 0;
 
-            int distanceToViewAbove = (topViewIndex * mViewSpacing) - (x * mViewSpacing);
+            if (x == topViewIndex) {
+                setDimensions(childView, 1f);
+                alpha = 1;
+            } else {
+                float weight = 1 - 0.1f * (getChildCount() - x - 1);
+                setDimensions(childView, weight);
+                alpha = .7f;
+            }
+
+            int distanceToViewAbove = (topViewIndex * mViewSpacing) + (x * mViewSpacing);
             int newPositionX = (getWidth() - childView.getMeasuredWidth()) / 2;
             int newPositionY = distanceToViewAbove + getPaddingTop();
 
@@ -257,7 +273,7 @@ public class SwipeStack extends ViewGroup {
                         .y(newPositionY)
                         .scaleX(scaleFactor)
                         .scaleY(scaleFactor)
-                        .alpha(1)
+                        .alpha(alpha)
                         .setDuration(mAnimationDuration);
 
             } else {
@@ -265,6 +281,7 @@ public class SwipeStack extends ViewGroup {
                 childView.setY(newPositionY);
                 childView.setScaleY(scaleFactor);
                 childView.setScaleX(scaleFactor);
+                childView.setAlpha(alpha);
             }
         }
     }
@@ -294,20 +311,48 @@ public class SwipeStack extends ViewGroup {
     public void onSwipeProgress(float progress) {
         if (mProgressListener != null)
             mProgressListener.onSwipeProgress(getCurrentPosition(), progress);
+        for (int x = 0; x < getChildCount(); x++) {
+            getChildAt(x).setAlpha(1f);
+        }
     }
 
     public void onSwipeEnd() {
         if (mProgressListener != null) mProgressListener.onSwipeEnd(getCurrentPosition());
+        for (int x = 0; x < getChildCount(); x++) {
+            View childView = getChildAt(x);
+            int topViewIndex = getChildCount() - 1;
+            float alpha = 0;
+            if (x == topViewIndex) {
+                alpha = 1;
+            } else {
+                float weight = 1 - 0.1f * (getChildCount() - x - 1);
+                setDimensions(childView, weight);
+                alpha = .7f;
+            }
+            childView.setAlpha(alpha);
+        }
     }
 
     public void onViewSwipedToLeft() {
         if (mListener != null) mListener.onViewSwipedToLeft(getCurrentPosition());
+        int position = mCurrentViewIndex - getChildCount();
+        if (position < 0) {
+            position += mAdapter.getCount();
+        }
+        position = (position + 1) % mAdapter.getCount();
         removeTopView();
+        if (mIndexListener != null) mIndexListener.onViewSwipedTo(position);
     }
 
-    public void onViewSwipedToRight() {
+    void onViewSwipedToRight() {
         if (mListener != null) mListener.onViewSwipedToRight(getCurrentPosition());
+        int position = mCurrentViewIndex - getChildCount();
+        if (position < 0) {
+            position += mAdapter.getCount();
+        }
+        position = (position + 1) % mAdapter.getCount();
         removeTopView();
+        if (mIndexListener != null) mIndexListener.onViewSwipedTo(position);
     }
 
     /**
@@ -324,22 +369,30 @@ public class SwipeStack extends ViewGroup {
      *
      * @return The adapter currently used to display data in this SwipeStack.
      */
-    public Adapter getAdapter() {
+    public FragmentPagerAdapter getAdapter() {
         return mAdapter;
     }
 
     /**
      * Sets the data behind this SwipeView.
      *
-     * @param adapter The Adapter which is responsible for maintaining the
-     *                data backing this list and for producing a view to represent an
-     *                item in that data set.
+     * @param adapter The Adapter which is responsible for maintaining the data backing this list
+     *                and for producing a view to represent an item in that data set.
      * @see #getAdapter()
      */
-    public void setAdapter(Adapter adapter) {
+    public void setAdapter(FragmentPagerAdapter adapter, LayoutInflater layoutInflater) {
         if (mAdapter != null) mAdapter.unregisterDataSetObserver(mDataObserver);
         mAdapter = adapter;
         mAdapter.registerDataSetObserver(mDataObserver);
+        mNumberOfStackedViews = Math.min(mDefaultNumberOfStackedViews, mAdapter.getCount());
+        this.layoutInflater = layoutInflater;
+        zeroIndexViewNotified = false;
+        if (mIndexListener != null && mAdapter.getCount() > 0) {
+            mIndexListener.onViewSwipedTo(0);
+            zeroIndexViewNotified = true;
+        }
+        removeAllViews();
+        mCurrentViewIndex = 0;
     }
 
     /**
@@ -354,8 +407,8 @@ public class SwipeStack extends ViewGroup {
     /**
      * Sets the allowed swipe directions.
      *
-     * @param directions One of {@link #SWIPE_DIRECTION_BOTH},
-     *                   {@link #SWIPE_DIRECTION_ONLY_LEFT}, or {@link #SWIPE_DIRECTION_ONLY_RIGHT}.
+     * @param directions One of {@link #SWIPE_DIRECTION_BOTH}, {@link #SWIPE_DIRECTION_ONLY_LEFT},
+     *                   or {@link #SWIPE_DIRECTION_ONLY_RIGHT}.
      */
     public void setAllowedSwipeDirections(int directions) {
         mAllowedSwipeDirections = directions;
@@ -369,6 +422,14 @@ public class SwipeStack extends ViewGroup {
      */
     public void setListener(@Nullable SwipeStackListener listener) {
         mListener = listener;
+    }
+
+    public void setIndexListener(@Nullable SwipeStackIndexListener listener) {
+        mIndexListener = listener;
+        if (mIndexListener != null && !zeroIndexViewNotified && mAdapter != null && mAdapter.getCount() > 0) {
+            mIndexListener.onViewSwipedTo(0);
+            zeroIndexViewNotified = true;
+        }
     }
 
     /**
@@ -415,6 +476,10 @@ public class SwipeStack extends ViewGroup {
         requestLayout();
     }
 
+    public interface SwipeStackIndexListener {
+        void onViewSwipedTo(int position);
+    }
+
     /**
      * Interface definition for a callback to be invoked when the top view was
      * swiped to the left / right or when the stack gets empty.
@@ -456,8 +521,8 @@ public class SwipeStack extends ViewGroup {
          * Called when the user is dragging the top view of the stack.
          *
          * @param position The position of the view in the currently set adapter.
-         * @param progress Represents the horizontal dragging position in relation to
-         *                 the start position of the drag.
+         * @param progress Represents the horizontal dragging position in relation to the start
+         *                 position of the drag.
          */
         void onSwipeProgress(int position, float progress);
 

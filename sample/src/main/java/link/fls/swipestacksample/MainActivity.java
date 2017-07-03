@@ -30,21 +30,23 @@ import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import link.fls.swipestack.SwipeStack;
 
-public class MainActivity extends AppCompatActivity implements SwipeStack.SwipeStackListener, View.OnClickListener {
+public class MainActivity extends AppCompatActivity implements SwipeStack.SwipeStackListener,
+        View.OnClickListener, SwipeStack.SwipeStackIndexListener {
 
     private Button mButtonLeft, mButtonRight;
     private FloatingActionButton mFab;
 
     private ArrayList<String> mData;
     private SwipeStack mSwipeStack;
-    private SwipeStackAdapter mAdapter;
+//    private SwipeStackAdapter mAdapter;
+
+    private MyFlightsCardAdapter mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,9 +63,11 @@ public class MainActivity extends AppCompatActivity implements SwipeStack.SwipeS
         mFab.setOnClickListener(this);
 
         mData = new ArrayList<>();
-        mAdapter = new SwipeStackAdapter(mData);
-        mSwipeStack.setAdapter(mAdapter);
+        mAdapter = new MyFlightsCardAdapter(getSupportFragmentManager(), 1);
+        mSwipeStack.setAdapter(mAdapter, getLayoutInflater());
         mSwipeStack.setListener(this);
+        mSwipeStack.setIndexListener(this);
+        mSwipeStack.setEnabled(false);
 
         fillWithTestData();
     }
@@ -81,8 +85,9 @@ public class MainActivity extends AppCompatActivity implements SwipeStack.SwipeS
         } else if (v.equals(mButtonRight)) {
             mSwipeStack.swipeTopViewToRight();
         } else if (v.equals(mFab)) {
-            mData.add(getString(R.string.dummy_fab));
-            mAdapter.notifyDataSetChanged();
+//            mData.add(getString(R.string.dummy_fab));
+            mSwipeStack.setEnabled(true);
+            mAdapter.addNewFragment();
         }
     }
 
@@ -113,21 +118,26 @@ public class MainActivity extends AppCompatActivity implements SwipeStack.SwipeS
 
     @Override
     public void onViewSwipedToRight(int position) {
-        String swipedElement = mAdapter.getItem(position);
-        Toast.makeText(this, getString(R.string.view_swiped_right, swipedElement),
-                Toast.LENGTH_SHORT).show();
+//        String swipedElement = mAdapter.getItem(position);
+//        Toast.makeText(this, getString(R.string.view_swiped_right, swipedElement),
+//                Toast.LENGTH_SHORT).show();
     }
 
     @Override
     public void onViewSwipedToLeft(int position) {
-        String swipedElement = mAdapter.getItem(position);
-        Toast.makeText(this, getString(R.string.view_swiped_left, swipedElement),
-                Toast.LENGTH_SHORT).show();
+//        String swipedElement = mAdapter.getItem(position);
+//        Toast.makeText(this, getString(R.string.view_swiped_left, swipedElement),
+//                Toast.LENGTH_SHORT).show();
     }
 
     @Override
     public void onStackEmpty() {
-        Toast.makeText(this, R.string.stack_empty, Toast.LENGTH_SHORT).show();
+//        Toast.makeText(this, R.string.stack_empty, Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onViewSwipedTo(int position) {
+        System.out.println("onViewSwipedTo: " + position);
     }
 
     public class SwipeStackAdapter extends BaseAdapter {

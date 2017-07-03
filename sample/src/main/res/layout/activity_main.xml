@@ -31,8 +31,11 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_above="@+id/buttonSwipeLeft"
-        android:padding="@dimen/padding_swipestack"
-        app:stack_rotation="10"
+        android:paddingTop="@dimen/padding_swipestack"
+        android:paddingBottom="@dimen/padding_swipestack"
+        android:paddingLeft="24dp"
+        android:paddingRight="24dp"
+        app:stack_rotation="0"
         app:stack_size="3"/>
 
     <android.support.design.widget.CoordinatorLayout
